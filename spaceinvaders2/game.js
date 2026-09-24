@@ -16,8 +16,8 @@ let gameState = 'START';
 // DADOS DO JOGO E UPGRADES
 // ==========================================
 let score = 0;
-let fase = 1;        // Antigo "Level"
-let playerLevel = 1; // Nível atual do jogador (cresce com upgrades)
+let fase = 1;        
+let playerLevel = 1; 
 let maxLives = 10;
 let lives = maxLives;
 let highScore = parseInt(localStorage.getItem('spaceInvadersHighScore')) || 0;
@@ -30,7 +30,6 @@ let playerUpgrades = {
 };
 
 const UPGRADES_DEF = [
-    // Upgrades Clássicos
     { id: 'speed', name: 'Mais Velocidade', desc: '+10% vel. movimento', rarity: 'Comum', max: 5 },
     { id: 'multishot', name: 'Ataque Duplo', desc: 'Tiros extras laterais', rarity: 'Comum', max: 2 },
     { id: 'health', name: 'Vida Extra', desc: 'Vida máxima +5', rarity: 'Comum', max: 4 },
@@ -42,7 +41,6 @@ const UPGRADES_DEF = [
     { id: 'laser', name: 'Laser', desc: 'Feixe contínuo poderoso', rarity: 'Lendário', max: 1 },
     { id: 'wall', name: 'Parede', desc: 'Escudos frontais', rarity: 'Lendário', max: 3 },
     { id: 'doublexp', name: 'Mais Exp', desc: 'Pontos duplicados', rarity: 'Lendário', max: 1 },
-    // Novos Upgrades
     { id: 'buffer', name: 'Sobrecarga de Memória', desc: 'Mortes aumentam cadência', rarity: 'Comum', max: 1 },
     { id: 'dash', name: 'Dash Tático', desc: 'Toque 2x Direção p/ Salto', rarity: 'Comum', max: 1 },
     { id: 'lifo', name: 'Ricochete LIFO', desc: 'Tiros perdidos retornam', rarity: 'Raro', max: 1 },
@@ -67,7 +65,6 @@ let lastLifoPop = 0;
 let lastGradientTime = 0;
 let lastEchoTime = 0;
 
-// Variáveis para Buffer e Dash
 let bufferStacks = 0;
 let bufferTimer = 0;
 let lastLeftTap = 0;
@@ -129,7 +126,7 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
         keys.left = true;
         if (playerUpgrades.dash > 0 && now - lastLeftTap < 250 && now - dashCooldown > 1500) {
-            player.x -= 120; // Dash mecânico
+            player.x -= 120; 
             dashCooldown = now;
         }
         lastLeftTap = now;
@@ -137,7 +134,7 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
         keys.right = true;
         if (playerUpgrades.dash > 0 && now - lastRightTap < 250 && now - dashCooldown > 1500) {
-            player.x += 120; // Dash mecânico
+            player.x += 120; 
             dashCooldown = now;
         }
         lastRightTap = now;
@@ -154,6 +151,16 @@ document.addEventListener('keyup', (e) => {
 // ==========================================
 // FUNÇÕES AUXILIARES E LÓGICA DE UPGRADES
 // ==========================================
+
+// Função responsável por evoluir a aparência da nave
+function atualizarNave() {
+    const skins = ['nave.png', 'Ship_4.png', 'Ship_5.png', 'Ship_2.png', 'Ship_3.png'];
+    // A cada 3 níveis, avança um índice. Ex: Nível 4 = índice 1 (Ship_4.png)
+    let index = Math.floor((playerLevel - 1) / 3);
+    if (index >= skins.length) index = skins.length - 1; // Limita à última nave
+    playerImg.src = skins[index];
+}
+
 function resetGame() {
     score = 0;
     fase = 1;
@@ -180,6 +187,7 @@ function resetGame() {
     player.x = canvas.width / 2 - player.width / 2;
     alienSpawnRate = 1200;
     gameState = 'PLAYING';
+    atualizarNave(); // Reseta a aparência
 }
 
 function atualizarHighScore() {
@@ -214,7 +222,8 @@ function generateUpgrades() {
 
 function applyUpgrade(upgrade) {
     playerUpgrades[upgrade.id]++;
-    playerLevel++; // Sobe o nível do jogador
+    playerLevel++; 
+    atualizarNave(); // Verifica se a nave deve mudar de aparência
     
     if (upgrade.id === 'health') {
         maxLives += 5;
@@ -251,10 +260,9 @@ function killAlien(index, alien) {
     if (index === -1) return;
     aliens.splice(index, 1);
     
-    // Sobrecarga de Memória (Buffer)
     if (playerUpgrades.buffer > 0) {
         bufferStacks = Math.min(bufferStacks + 1, 10);
-        bufferTimer = Date.now() + 2000; // Mantém o stack ativo por 2s
+        bufferTimer = Date.now() + 2000; 
     }
 
     if (playerUpgrades.explosive > 0) {
@@ -265,8 +273,10 @@ function killAlien(index, alien) {
     let previousScore = score;
     score += pts;
     
+    // Verifica se passou de Fase (a cada 100 pontos da pontuação base)
     if (Math.floor(score / 100) > Math.floor(previousScore / 100)) {
         fase++;
+        lives = maxLives; // Recupera a vida toda
         if (alienSpawnRate > 400) alienSpawnRate -= 50;
     }
     
@@ -284,21 +294,17 @@ function update() {
     if (gameState !== 'PLAYING') return;
     const now = Date.now(); 
     
-    // Decaimento do Buffer
     if (now > bufferTimer) bufferStacks = 0;
     
-    // 1. Movimento do Jogador
     let currentSpeed = player.speed * (1 + (playerUpgrades.speed * 0.1));
     if (keys.left) player.x -= currentSpeed;
     if (keys.right) player.x += currentSpeed;
     if (player.x < 0) player.x = 0;
     if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
 
-    // 2. Disparos do Jogador
     let isShootingLaser = (keys.space && playerUpgrades.laser > 0);
     let isHoming = playerUpgrades.homing > 0;
     
-    // Aplicação da Sobrecarga (até +50% de cadência)
     let dynamicFireRate = fireRate * Math.pow(0.95, bufferStacks);
     let currentFireRate = isHoming ? dynamicFireRate / 0.4 : dynamicFireRate;
     
@@ -306,7 +312,6 @@ function update() {
         let numBullets = 1 + playerUpgrades.multishot;
         let currentBulletSpeed = isHoming ? bulletSpeed * 0.5 : bulletSpeed;
 
-        // Disparo Principal e Clones Paralelos
         let shootPositions = [player.x];
         if (playerUpgrades.parallel > 0) shootPositions.push(player.x - 70, player.x + 70);
 
@@ -326,7 +331,6 @@ function update() {
         lastShotTime = now; 
     }
 
-    // Tiro de Pacote de Eco (Bumerangue Lendário)
     if (playerUpgrades.echo > 0 && keys.space && now - lastEchoTime > 8000) {
         bullets.push({
             x: player.x + player.width/2 - 10, y: player.y, 
@@ -337,7 +341,6 @@ function update() {
         lastEchoTime = now;
     }
 
-    // 3. Torreta
     const turretPos = [
         {x: 30, y: 30}, {x: canvas.width-30, y: 30},
         {x: 30, y: canvas.height-30}, {x: canvas.width-30, y: canvas.height-30}
@@ -353,7 +356,6 @@ function update() {
         lastTurretShot = now;
     }
 
-    // 4. Feitiço e Gradiente (Mínimo Local)
     if (playerUpgrades.spell > 0 && now - lastSpellTime > 4000) {
         spellZones.push({x: Math.random()*(canvas.width-100)+50, y: Math.random()*(canvas.height/2)+50, radius: 80, spawnTime: now});
         lastSpellTime = now;
@@ -366,7 +368,6 @@ function update() {
     }
     gradientWells = gradientWells.filter(g => now - g.spawnTime < 4000);
 
-    // 5. Geração de Inimigos
     if (now - lastAlienSpawnTime > alienSpawnRate) {
         aliens.push({ 
             x: Math.random() * (canvas.width - alienWidth), y: -alienHeight, 
@@ -375,7 +376,6 @@ function update() {
         lastAlienSpawnTime = now;
     }
 
-    // 6. Atualização Visual (Explosões e Raios)
     for (let i = explosions.length - 1; i >= 0; i--) {
         let exp = explosions[i];
         exp.radius += 3;
@@ -388,12 +388,10 @@ function update() {
     }
     lightnings = lightnings.filter(l => now - l.timer < 300);
 
-    // 7. Paredes Protetoras & Drones Orbitais
     let activeWalls = playerWalls.filter(w => w.active);
     let spacing = 55;
     let startX = player.x + player.width/2 - ((activeWalls.length-1)*spacing)/2;
     
-    // 8. Atualização de Inimigos
     for (let i = aliens.length - 1; i >= 0; i--) {
         let alien = aliens[i];
         let currentAlienSpeed = alien.baseSpeed;
@@ -404,14 +402,13 @@ function update() {
             }
         }
         
-        // Puxão do Poço de Gradiente
         for (let g of gradientWells) {
             let dx = g.x - (alien.x + alienWidth/2);
             let dy = g.y - (alien.y + alienHeight/2);
             if (Math.hypot(dx, dy) < 250) {
                 alien.x += dx * 0.03;
                 alien.y += dy * 0.03;
-                currentAlienSpeed *= 0.1; // Segura os inimigos
+                currentAlienSpeed *= 0.1; 
             }
         }
         
@@ -422,7 +419,6 @@ function update() {
             finalizarJogo();
         }
 
-        // Colisão com Paredes
         let hitShield = false;
         for (let w = 0; w < activeWalls.length; w++) {
             let wx = startX + w*spacing - 15, wy = player.y - 40;
@@ -435,7 +431,6 @@ function update() {
         }
         if (hitShield) continue;
 
-        // Colisão com Drones Orbitais (Interceção)
         if (playerUpgrades.drones > 0) {
             let numDrones = playerUpgrades.drones;
             for(let d=0; d<numDrones; d++) {
@@ -459,7 +454,6 @@ function update() {
     }
     playerWalls = activeWalls.filter(w => w.active);
 
-    // 9. Dano Contínuo do Laser
     if (isShootingLaser) {
         for (let j = aliens.length - 1; j >= 0; j--) {
             if (aliens[j].x < player.x + player.width / 2 + 10 && aliens[j].x + aliens[j].width > player.x + player.width / 2 - 10) {
@@ -468,7 +462,6 @@ function update() {
         }
     }
 
-    // 10. Atualização de Projéteis (Pilhas LIFO e Ecos)
     for (let i = bullets.length - 1; i >= 0; i--) {
         let bullet = bullets[i];
         
@@ -485,25 +478,23 @@ function update() {
             } else bullet.vy = bullet.vy * 0.95 - (bullet.speed * 0.05); 
             bullet.x += bullet.vx; bullet.y += bullet.vy;
         } else {
-            bullet.y += bullet.vy; // Usa vetor para suportar bumerangue
+            bullet.y += bullet.vy; 
         }
 
-        // Bateu no topo da tela
         if (bullet.y < 0 && bullet.vy < 0) {
             if (bullet.isEcho) {
-                bullet.vy = Math.abs(bullet.speed); // Bumerangue volta
+                bullet.vy = Math.abs(bullet.speed); 
             } else if (playerUpgrades.lifo > 0) {
-                lifoStack.push({x: bullet.x, speed: bullet.speed}); // Adiciona à pilha
+                lifoStack.push({x: bullet.x, speed: bullet.speed}); 
                 bullets.splice(i, 1);
                 continue;
             }
         }
         
-        // Bumerangue Eco atingiu o jogador no retorno
         if (bullet.isEcho && bullet.vy > 0 && bullet.y > player.y && Math.abs(bullet.x - player.x) < 50) {
             lives = Math.min(lives + 1, maxLives);
             score += 50;
-            aliens.forEach(a => a.y = Math.max(-50, a.y - 150)); // Onda de repulsão
+            aliens.forEach(a => a.y = Math.max(-50, a.y - 150)); 
             bullets.splice(i, 1);
             continue;
         }
@@ -519,7 +510,6 @@ function update() {
                 killAlien(j, alien);
                 bullet.hitAliens.push(alien);
                 
-                // Dispara choque em rede (Chain Lightning)
                 if (playerUpgrades.chain > 0 && !bullet.isEcho && !bullet.isTurret) {
                     triggerLightning(alien.x + alienWidth/2, alien.y + alienHeight/2, playerUpgrades.chain);
                 }
@@ -538,7 +528,6 @@ function update() {
         }
     }
 
-    // Processamento da Pilha LIFO
     if (lifoStack.length > 0 && now - lastLifoPop > 150) {
         let b = lifoStack.pop();
         bullets.push({
@@ -568,7 +557,6 @@ function draw() {
     let hue = (fase * 20) % 360; 
     ctx.fillStyle = `hsl(${hue}, 40%, 12%)`; ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Efeitos Terrestres (Poço e Feitiço)
     for (let g of gradientWells) {
         let pulse = Math.abs(Math.sin(Date.now() * 0.005)) * 10;
         let grad = ctx.createRadialGradient(g.x, g.y, 0, g.x, g.y, 200);
@@ -584,7 +572,6 @@ function draw() {
         ctx.beginPath(); ctx.arc(s.x, s.y, s.radius, 0, Math.PI * 2); ctx.fill();
     }
 
-    // Efeitos e Jogador
     if (keys.space && playerUpgrades.laser > 0 && gameState === 'PLAYING') {
         ctx.fillStyle = '#00FFFF'; ctx.shadowBlur = 10; ctx.shadowColor = '#00FFFF';
         ctx.fillRect(player.x + player.width/2 - 10, 0, 20, player.y); ctx.shadowBlur = 0; 
@@ -607,7 +594,6 @@ function draw() {
         }
     }
 
-    // Clones (Processamento Paralelo)
     if (playerUpgrades.parallel > 0 && gameState === 'PLAYING') {
         ctx.globalAlpha = 0.4;
         ctx.drawImage(playerImg, player.x - 70, player.y, player.width, player.height);
@@ -616,7 +602,6 @@ function draw() {
     }
     ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
 
-    // Torretas e Projéteis
     const turretPos = [{x: 30, y: 30}, {x: canvas.width-30, y: 30}, {x: 30, y: canvas.height-30}, {x: canvas.width-30, y: canvas.height-30}];
     for (let i = 0; i < playerUpgrades.turret; i++) {
         let pos = turretPos[i];
@@ -649,7 +634,6 @@ function draw() {
         ctx.lineTo(l.x2, l.y2); ctx.stroke();
     }
 
-    // Interface HUD
     ctx.fillStyle = '#FFFFFF'; ctx.font = '20px Arial';
     ctx.fillText('Score: ' + score, 10, 30);
     ctx.fillText('High Score: ' + highScore, 10, 60); 
@@ -660,7 +644,6 @@ function draw() {
     ctx.fillStyle = (lives < 4) ? '#FF5555' : '#FFFFFF';
     ctx.fillText('Vidas: ' + lives + '/' + maxLives, canvas.width - 130, 90);
 
-    // ECRÃS DE SOBREPOSIÇÃO
     if (gameState === 'UPGRADE') {
         ctx.fillStyle = 'rgba(0, 0, 0, 0.85)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.fillStyle = '#FFFFFF'; ctx.textAlign = 'center';

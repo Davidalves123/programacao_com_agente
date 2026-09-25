@@ -22,6 +22,7 @@ let maxLives = 10;
 let lives = maxLives;
 let highScore = parseInt(localStorage.getItem('spaceInvadersHighScore')) || 0;
 let nextUpgradeScore = 300;
+let lastBossFase = 0; 
 
 let playerUpgrades = {
     speed: 0, multishot: 0, health: 0, pierce: 0, explosive: 0,
@@ -78,6 +79,7 @@ const keys = { left: false, right: false, space: false };
 
 const player = { width: 50, height: 30, x: canvas.width / 2 - 25, y: canvas.height - 50, speed: 6 };
 const bullets = [];
+const alienBullets = []; 
 const bulletSpeed = 7;
 const fireRate = 250; 
 let lastShotTime = 0; 
@@ -85,7 +87,7 @@ let lastShotTime = 0;
 const aliens = [];
 const alienWidth = 40;
 const alienHeight = 30;
-let baseAlienSpeed = 2;
+let baseAlienSpeed = 1.0; 
 let alienSpawnRate = 1200; 
 let lastAlienSpawnTime = 0;
 
@@ -152,12 +154,10 @@ document.addEventListener('keyup', (e) => {
 // FUNÇÕES AUXILIARES E LÓGICA DE UPGRADES
 // ==========================================
 
-// Função responsável por evoluir a aparência da nave
 function atualizarNave() {
     const skins = ['nave.png', 'Ship_4.png', 'Ship_5.png', 'Ship_2.png', 'Ship_3.png'];
-    // A cada 3 níveis, avança um índice. Ex: Nível 4 = índice 1 (Ship_4.png)
-    let index = Math.floor((playerLevel - 1) / 3);
-    if (index >= skins.length) index = skins.length - 1; // Limita à última nave
+    let index = Math.floor(playerLevel / 3); 
+    if (index >= skins.length) index = skins.length - 1; 
     playerImg.src = skins[index];
 }
 
@@ -168,6 +168,7 @@ function resetGame() {
     maxLives = 10;
     lives = maxLives; 
     nextUpgradeScore = 300;
+    lastBossFase = 0;
     
     playerUpgrades = {
         speed: 0, multishot: 0, health: 0, pierce: 0, explosive: 0,
@@ -177,6 +178,7 @@ function resetGame() {
     
     aliens.length = 0;
     bullets.length = 0;
+    alienBullets.length = 0;
     explosions.length = 0;
     spellZones.length = 0;
     playerWalls.length = 0;
@@ -187,19 +189,20 @@ function resetGame() {
     player.x = canvas.width / 2 - player.width / 2;
     alienSpawnRate = 1200;
     gameState = 'PLAYING';
-    atualizarNave(); // Reseta a aparência
+    atualizarNave(); 
 }
 
+// CORREÇÃO I/O: Atualiza variável, mas não trava o disco gravando toda hora
 function atualizarHighScore() {
     if (score > highScore) {
         highScore = score;
-        localStorage.setItem('spaceInvadersHighScore', highScore);
     }
 }
 
+// CORREÇÃO I/O: Gravação do recorde transferida para o fim do jogo
 function finalizarJogo() {
     gameState = 'GAMEOVER';
-    atualizarHighScore();
+    localStorage.setItem('spaceInvadersHighScore', highScore);
 }
 
 function generateUpgrades() {
@@ -223,7 +226,7 @@ function generateUpgrades() {
 function applyUpgrade(upgrade) {
     playerUpgrades[upgrade.id]++;
     playerLevel++; 
-    atualizarNave(); // Verifica se a nave deve mudar de aparência
+    atualizarNave();
     
     if (upgrade.id === 'health') {
         maxLives += 5;
@@ -241,18 +244,42 @@ function triggerLightning(startX, startY, jumpsLeft) {
     let closest = null, minDist = 180;
     for (let a of aliens) {
         if (a.shocked) continue;
-        let d = Math.hypot(a.x + alienWidth/2 - startX, a.y + alienHeight/2 - startY);
+        let d = Math.hypot(a.x + a.width/2 - startX, a.y + a.height/2 - startY);
         if (d < minDist) { minDist = d; closest = a; }
     }
     if (closest) {
         closest.shocked = true;
-        lightnings.push({
-            x1: startX, y1: startY, 
-            x2: closest.x + alienWidth/2, y2: closest.y + alienHeight/2, 
-            timer: Date.now()
-        });
-        killAlien(aliens.indexOf(closest), closest);
-        triggerLightning(closest.x + alienWidth/2, closest.y + alienHeight/2, jumpsLeft - 1);
+        
+        // CORREÇÃO DE PARTICULAS: Evita crashear o canvas renderizando raios infinitos
+        if (lightnings.length < 40) {
+            lightnings.push({
+                x1: startX, y1: startY, 
+                x2: closest.x + closest.width/2, y2: closest.y + closest.height/2, 
+                timer: Date.now()
+            });
+        }
+        
+        damageAlien(aliens.indexOf(closest), closest);
+        triggerLightning(closest.x + closest.width/2, closest.y + closest.height/2, jumpsLeft - 1);
+    }
+}
+
+function spawnSpecificAlien(x, y, type) {
+    x = Math.max(0, Math.min(canvas.width - alienWidth, x));
+    let speedMods = type === 'white' ? 0.5 : 1.0;
+    aliens.push({
+        x: x, y: y, width: alienWidth, height: alienHeight,
+        baseSpeed: (baseAlienSpeed + (fase * 0.15)) * speedMods, 
+        shocked: false, type: type, hp: 1, lastShot: Date.now()
+    });
+}
+
+function damageAlien(index, alien) {
+    if (index === -1) return;
+    if (alien.hp > 1) {
+        alien.hp--;
+    } else {
+        killAlien(index, alien);
     }
 }
 
@@ -260,24 +287,44 @@ function killAlien(index, alien) {
     if (index === -1) return;
     aliens.splice(index, 1);
     
+    if (alien.type === 'white') {
+        spawnSpecificAlien(alien.x - 25, alien.y, 'normal');
+        spawnSpecificAlien(alien.x + 25, alien.y, 'normal');
+    }
+    
     if (playerUpgrades.buffer > 0) {
         bufferStacks = Math.min(bufferStacks + 1, 10);
         bufferTimer = Date.now() + 2000; 
     }
 
-    if (playerUpgrades.explosive > 0) {
-        explosions.push({x: alien.x + alienWidth/2, y: alien.y + alienHeight/2, radius: 10, maxRadius: 60});
+    // CORREÇÃO DE PARTICULAS: Limita o número de explosões na tela
+    if (playerUpgrades.explosive > 0 && explosions.length < 20) {
+        explosions.push({
+            x: alien.x + alien.width/2, 
+            y: alien.y + alien.height/2, 
+            radius: 10, 
+            maxRadius: 60,
+            hitAliens: []
+        });
     }
     
-    let pts = 10 * (playerUpgrades.doublexp > 0 ? 2 : 1);
-    let previousScore = score;
+    let pts = (alien.type === 'boss' ? 100 : 10) * (playerUpgrades.doublexp > 0 ? 2 : 1);
     score += pts;
     
-    // Verifica se passou de Fase (a cada 100 pontos da pontuação base)
-    if (Math.floor(score / 100) > Math.floor(previousScore / 100)) {
-        fase++;
-        lives = maxLives; // Recupera a vida toda
-        if (alienSpawnRate > 400) alienSpawnRate -= 50;
+    // CORREÇÃO MATEMÁTICA: Pular múltiplos níveis garante que não desincronize se ganhar pontos demais 
+    let novaFase = Math.floor(score / 100) + 1;
+    if (novaFase > fase) {
+        let fasesPulas = novaFase - fase;
+        fase = novaFase;
+        lives = maxLives; 
+        
+        for (let k = 0; k < fasesPulas; k++) {
+            if (alienSpawnRate > 400) alienSpawnRate -= 50;
+        }
+
+        for (let w = 0; w < playerWalls.length; w++) {
+            playerWalls[w].active = true;
+        }
     }
     
     atualizarHighScore();
@@ -304,27 +351,31 @@ function update() {
 
     let isShootingLaser = (keys.space && playerUpgrades.laser > 0);
     let isHoming = playerUpgrades.homing > 0;
-    
     let dynamicFireRate = fireRate * Math.pow(0.95, bufferStacks);
     let currentFireRate = isHoming ? dynamicFireRate / 0.4 : dynamicFireRate;
     
-    if (keys.space && now - lastShotTime > currentFireRate && !isShootingLaser) {
-        let numBullets = 1 + playerUpgrades.multishot;
-        let currentBulletSpeed = isHoming ? bulletSpeed * 0.5 : bulletSpeed;
+    let shootPositions = [player.x];
+    if (playerUpgrades.parallel > 0) shootPositions.push(player.x - 70, player.x + 70);
 
-        let shootPositions = [player.x];
-        if (playerUpgrades.parallel > 0) shootPositions.push(player.x - 70, player.x + 70);
+    if (keys.space && now - lastShotTime > currentFireRate && !isShootingLaser) {
+        let currentBulletSpeed = isHoming ? bulletSpeed * 0.5 : bulletSpeed;
+        
+        let mult = Math.min(playerUpgrades.multishot, 2);
+        let offsets = [];
+        if (mult === 0) offsets = [0];
+        else if (mult === 1) offsets = [-15, 15];
+        else if (mult === 2) offsets = [-20, 0, 20];
 
         for(let px of shootPositions) {
-            for (let i = 0; i < numBullets; i++) {
-                let offsetX = (i - (numBullets - 1) / 2) * 20;
+            for (let offsetX of offsets) {
                 bullets.push({
                     x: px + player.width / 2 - 2.5 + offsetX,
                     y: player.y,
                     vx: 0, vy: -currentBulletSpeed, 
                     width: 5, height: 15, speed: currentBulletSpeed,
                     pierceLeft: playerUpgrades.pierce,
-                    hitAliens: [], isHoming: isHoming, isTurret: false, isEcho: false
+                    hitAliens: [], isHoming: isHoming, isTurret: false, isEcho: false,
+                    hasLooped: false
                 });
             }
         }
@@ -336,7 +387,7 @@ function update() {
             x: player.x + player.width/2 - 10, y: player.y, 
             vx: 0, vy: -bulletSpeed * 1.5,
             width: 20, height: 20, speed: bulletSpeed * 1.5, 
-            pierceLeft: 999, hitAliens: [], isHoming: false, isTurret: false, isEcho: true
+            pierceLeft: 999, hitAliens: [], isHoming: false, isTurret: false, isEcho: true, hasLooped: false
         });
         lastEchoTime = now;
     }
@@ -350,7 +401,7 @@ function update() {
             bullets.push({
                 x: turretPos[i].x, y: turretPos[i].y, vx: 0, vy: -bulletSpeed * 0.4,
                 width: 8, height: 8, speed: bulletSpeed * 0.4, 
-                pierceLeft: 0, hitAliens: [], isHoming: true, isTurret: true, isEcho: false
+                pierceLeft: 0, hitAliens: [], isHoming: true, isTurret: true, isEcho: false, hasLooped: false
             });
         }
         lastTurretShot = now;
@@ -368,43 +419,117 @@ function update() {
     }
     gradientWells = gradientWells.filter(g => now - g.spawnTime < 4000);
 
-    if (now - lastAlienSpawnTime > alienSpawnRate) {
-        aliens.push({ 
-            x: Math.random() * (canvas.width - alienWidth), y: -alienHeight, 
-            width: alienWidth, height: alienHeight, baseSpeed: baseAlienSpeed + (fase * 0.5), shocked: false
-        });
-        lastAlienSpawnTime = now;
+    let currentSpawnRate = alienSpawnRate;
+    if (fase >= 31) currentSpawnRate /= 2.0;
+    else if (fase >= 21) currentSpawnRate /= 1.5;
+
+    if (now - lastAlienSpawnTime > currentSpawnRate) {
+        if (fase > 0 && fase % 20 === 0 && fase !== lastBossFase) {
+            aliens.push({ 
+                x: canvas.width / 2 - 50, y: -100, 
+                width: 100, height: 100, 
+                baseSpeed: 0.4, 
+                shocked: false, type: 'boss', hp: 100, 
+                lastShot: now 
+            });
+            lastBossFase = fase;
+            lastAlienSpawnTime = now;
+        } else {
+            let spawnType = 'normal';
+            let spawnHp = 1;
+            let rand = Math.random();
+            
+            if (fase >= 20 && rand < 0.05) { spawnType = 'white'; spawnHp = 1; }
+            else if (fase >= 15 && rand < 0.10) { spawnType = 'red'; spawnHp = 2; }
+            else if (fase >= 10 && rand < 0.15) { spawnType = 'yellow'; spawnHp = 1; }
+            else if (fase >= 5 && rand < 0.20) { spawnType = 'blue'; spawnHp = 1; }
+
+            let speedMods = spawnType === 'white' ? 0.5 : 1.0;
+            
+            aliens.push({ 
+                x: Math.random() * (canvas.width - alienWidth), y: -alienHeight, 
+                width: alienWidth, height: alienHeight, 
+                baseSpeed: (baseAlienSpeed + (fase * 0.15)) * speedMods, 
+                shocked: false, type: spawnType, hp: spawnHp, 
+                lastShot: Date.now() + Math.random()*1000 
+            });
+            lastAlienSpawnTime = now;
+        }
+    }
+
+    for (let i = alienBullets.length - 1; i >= 0; i--) {
+        let ab = alienBullets[i];
+        ab.x += ab.vx || 0;
+        ab.y += ab.vy || ab.speed;
+        
+        if (ab.x < player.x + player.width && ab.x + ab.width > player.x &&
+            ab.y < player.y + player.height && ab.y + ab.height > player.y) {
+            
+            lives -= (ab.damage || 1); 
+            alienBullets.splice(i, 1);
+            if (lives <= 0) finalizarJogo();
+            continue;
+        }
+        if (ab.y > canvas.height || ab.x < -50 || ab.x > canvas.width + 50) alienBullets.splice(i, 1);
     }
 
     for (let i = explosions.length - 1; i >= 0; i--) {
         let exp = explosions[i];
         exp.radius += 3;
         for (let j = aliens.length - 1; j >= 0; j--) {
-            if (Math.hypot((aliens[j].x + alienWidth/2) - exp.x, (aliens[j].y + alienHeight/2) - exp.y) < exp.radius) {
-                killAlien(j, aliens[j]);
+            let alien = aliens[j];
+            if (!exp.hitAliens.includes(alien) && Math.hypot((alien.x + alien.width/2) - exp.x, (alien.y + alien.height/2) - exp.y) < exp.radius) {
+                exp.hitAliens.push(alien);
+                damageAlien(j, alien);
             }
         }
         if (exp.radius > exp.maxRadius) explosions.splice(i, 1);
     }
+    
     lightnings = lightnings.filter(l => now - l.timer < 300);
 
-    let activeWalls = playerWalls.filter(w => w.active);
     let spacing = 55;
-    let startX = player.x + player.width/2 - ((activeWalls.length-1)*spacing)/2;
+    let startX = player.x + player.width/2 - ((playerWalls.length-1)*spacing)/2;
     
     for (let i = aliens.length - 1; i >= 0; i--) {
         let alien = aliens[i];
         let currentAlienSpeed = alien.baseSpeed;
         
+        if (alien.type === 'yellow') {
+            let dx = (player.x + player.width/2) - (alien.x + alien.width/2);
+            alien.x += Math.sign(dx) * 0.5;
+        }
+        
+        if (alien.type === 'blue' && now - alien.lastShot > 1250) {
+            alienBullets.push({
+                x: alien.x + alien.width/2 - 3, y: alien.y + alien.height,
+                width: 6, height: 16, vx: 0, vy: 4, damage: 1
+            });
+            alien.lastShot = now;
+        }
+        
+        if (alien.type === 'boss' && now - alien.lastShot > 2000) {
+            for (let angle = -0.4; angle <= 0.41; angle += 0.2) {
+                alienBullets.push({
+                    x: alien.x + alien.width/2 - 6,
+                    y: alien.y + alien.height - 10,
+                    width: 12, height: 12, 
+                    vx: Math.sin(angle) * 5, 
+                    vy: Math.cos(angle) * 5, 
+                    damage: 2
+                });
+            }
+            alien.lastShot = now;
+        }
+
         for (let s of spellZones) {
-            if (Math.hypot((alien.x + alienWidth/2) - s.x, (alien.y + alienHeight/2) - s.y) < s.radius) {
+            if (Math.hypot((alien.x + alien.width/2) - s.x, (alien.y + alien.height/2) - s.y) < s.radius) {
                 currentAlienSpeed *= 0.3; break;
             }
         }
-        
         for (let g of gradientWells) {
-            let dx = g.x - (alien.x + alienWidth/2);
-            let dy = g.y - (alien.y + alienHeight/2);
+            let dx = g.x - (alien.x + alien.width/2);
+            let dy = g.y - (alien.y + alien.height/2);
             if (Math.hypot(dx, dy) < 250) {
                 alien.x += dx * 0.03;
                 alien.y += dy * 0.03;
@@ -416,15 +541,20 @@ function update() {
 
         if (alien.x < player.x + player.width && alien.x + alien.width > player.x &&
             alien.y < player.y + player.height && alien.y + alien.height > player.y) {
-            finalizarJogo();
+            
+            lives -= 3;
+            killAlien(i, alien);
+            
+            if (lives <= 0) finalizarJogo();
+            continue; 
         }
 
         let hitShield = false;
-        for (let w = 0; w < activeWalls.length; w++) {
+        for (let w = 0; w < playerWalls.length; w++) {
             let wx = startX + w*spacing - 15, wy = player.y - 40;
-            if (activeWalls[w].active && alien.x < wx + 30 && alien.x + alien.width > wx && alien.y < wy + 15 && alien.y + alien.height > wy) {
-                activeWalls[w].active = false;
-                killAlien(i, alien);
+            if (playerWalls[w].active && alien.x < wx + 30 && alien.x + alien.width > wx && alien.y < wy + 15 && alien.y + alien.height > wy) {
+                playerWalls[w].active = false;
+                damageAlien(i, alien);
                 hitShield = true;
                 break;
             }
@@ -437,8 +567,8 @@ function update() {
                 let angle = now * 0.003 + (Math.PI * 2 / numDrones) * d;
                 let dx = player.x + player.width/2 + Math.cos(angle) * 80;
                 let dy = player.y + player.height/2 + Math.sin(angle) * 80;
-                if (Math.hypot((alien.x + alienWidth/2) - dx, (alien.y + alienHeight/2) - dy) < 30) {
-                    killAlien(i, alien);
+                if (Math.hypot((alien.x + alien.width/2) - dx, (alien.y + alien.height/2) - dy) < (alien.type === 'boss' ? 60 : 30)) {
+                    damageAlien(i, alien);
                     hitShield = true;
                     break;
                 }
@@ -452,12 +582,13 @@ function update() {
             if (lives <= 0) finalizarJogo();
         }
     }
-    playerWalls = activeWalls.filter(w => w.active);
 
     if (isShootingLaser) {
-        for (let j = aliens.length - 1; j >= 0; j--) {
-            if (aliens[j].x < player.x + player.width / 2 + 10 && aliens[j].x + aliens[j].width > player.x + player.width / 2 - 10) {
-                killAlien(j, aliens[j]);
+        for (let px of shootPositions) {
+            for (let j = aliens.length - 1; j >= 0; j--) {
+                if (aliens[j].x < px + player.width / 2 + 10 && aliens[j].x + aliens[j].width > px + player.width / 2 - 10) {
+                    damageAlien(j, aliens[j]);
+                }
             }
         }
     }
@@ -468,14 +599,18 @@ function update() {
         if (bullet.isHoming) {
             let nearest = null, minDist = Infinity;
             for (let a of aliens) {
-                let d = Math.hypot((a.x + alienWidth/2) - bullet.x, (a.y + alienHeight/2) - bullet.y);
+                let d = Math.hypot((a.x + a.width/2) - bullet.x, (a.y + a.height/2) - bullet.y);
                 if (d < minDist) { minDist = d; nearest = a; }
             }
             if (nearest) {
-                let mag = Math.hypot((nearest.x + alienWidth/2) - bullet.x, (nearest.y + alienHeight/2) - bullet.y);
-                bullet.vx = bullet.vx * 0.92 + ((nearest.x + alienWidth/2 - bullet.x) / mag * bullet.speed) * 0.08;
-                bullet.vy = bullet.vy * 0.92 + ((nearest.y + alienHeight/2 - bullet.y) / mag * bullet.speed) * 0.08;
-            } else bullet.vy = bullet.vy * 0.95 - (bullet.speed * 0.05); 
+                let mag = Math.hypot((nearest.x + nearest.width/2) - bullet.x, (nearest.y + nearest.height/2) - bullet.y);
+                if (mag > 0.1) {
+                    bullet.vx = bullet.vx * 0.92 + ((nearest.x + nearest.width/2 - bullet.x) / mag * bullet.speed) * 0.08;
+                    bullet.vy = bullet.vy * 0.92 + ((nearest.y + nearest.height/2 - bullet.y) / mag * bullet.speed) * 0.08;
+                }
+            } else {
+                bullet.vy = bullet.vy * 0.95 - (bullet.speed * 0.05); 
+            }
             bullet.x += bullet.vx; bullet.y += bullet.vy;
         } else {
             bullet.y += bullet.vy; 
@@ -484,7 +619,7 @@ function update() {
         if (bullet.y < 0 && bullet.vy < 0) {
             if (bullet.isEcho) {
                 bullet.vy = Math.abs(bullet.speed); 
-            } else if (playerUpgrades.lifo > 0) {
+            } else if (playerUpgrades.lifo > 0 && !bullet.hasLooped) {
                 lifoStack.push({x: bullet.x, speed: bullet.speed}); 
                 bullets.splice(i, 1);
                 continue;
@@ -507,15 +642,18 @@ function update() {
             if (bullet.x < alien.x + alien.width && bullet.x + bullet.width > alien.x &&
                 bullet.y < alien.y + alien.height && bullet.y + bullet.height > alien.y) {
                 
-                killAlien(j, alien);
                 bullet.hitAliens.push(alien);
+                damageAlien(j, alien);
                 
                 if (playerUpgrades.chain > 0 && !bullet.isEcho && !bullet.isTurret) {
-                    triggerLightning(alien.x + alienWidth/2, alien.y + alienHeight/2, playerUpgrades.chain);
+                    triggerLightning(alien.x + alien.width/2, alien.y + alien.height/2, playerUpgrades.chain);
                 }
 
                 if (bullet.isHoming && !bullet.isTurret) {
-                    explosions.push({x: bullet.x, y: bullet.y, radius: 10, maxRadius: 50});
+                    // CORREÇÃO DE PARTICULAS: Só cria novas explosões se o limite permitir
+                    if (explosions.length < 20) {
+                        explosions.push({x: bullet.x, y: bullet.y, radius: 10, maxRadius: 50, hitAliens: []});
+                    }
                     bulletHit = true; break;
                 }
                 if (bullet.pierceLeft > 0) bullet.pierceLeft--;
@@ -533,7 +671,8 @@ function update() {
         bullets.push({
             x: b.x, y: canvas.height, vx: 0, vy: -b.speed, 
             width: 5, height: 15, speed: b.speed, pierceLeft: playerUpgrades.pierce, 
-            hitAliens: [], isHoming: false, isTurret: false, isEcho: false
+            hitAliens: [], isHoming: false, isTurret: false, isEcho: false,
+            hasLooped: true 
         });
         lastLifoPop = now;
     }
@@ -574,13 +713,23 @@ function draw() {
 
     if (keys.space && playerUpgrades.laser > 0 && gameState === 'PLAYING') {
         ctx.fillStyle = '#00FFFF'; ctx.shadowBlur = 10; ctx.shadowColor = '#00FFFF';
-        ctx.fillRect(player.x + player.width/2 - 10, 0, 20, player.y); ctx.shadowBlur = 0; 
+        
+        let drawPositions = [player.x];
+        if (playerUpgrades.parallel > 0) drawPositions.push(player.x - 70, player.x + 70);
+        
+        for (let px of drawPositions) {
+            ctx.fillRect(px + player.width/2 - 10, 0, 20, player.y);
+        }
+        ctx.shadowBlur = 0; 
     }
 
     let spacing = 55;
     let startX = player.x + player.width/2 - ((playerWalls.length-1)*spacing)/2;
     for (let i = 0; i < playerWalls.length; i++) {
-        ctx.fillStyle = '#00FFCC'; ctx.fillRect(startX + i*spacing - 15, player.y - 40, 30, 15);
+        if (playerWalls[i].active) {
+            ctx.fillStyle = '#00FFCC'; 
+            ctx.fillRect(startX + i*spacing - 15, player.y - 40, 30, 15);
+        }
     }
     
     if (playerUpgrades.drones > 0) {
@@ -619,8 +768,39 @@ function draw() {
             ctx.fill();
         }
     }
+    
+    for (let ab of alienBullets) {
+        ctx.fillStyle = ab.damage === 2 ? '#FF00FF' : '#FF0055'; 
+        ctx.beginPath(); 
+        if (ab.damage === 2) {
+            ctx.arc(ab.x + ab.width/2, ab.y + ab.height/2, ab.width/2, 0, Math.PI*2);
+        } else {
+            ctx.roundRect(ab.x, ab.y, ab.width, ab.height, 4); 
+        }
+        ctx.fill();
+    }
 
-    for (let a of aliens) ctx.drawImage(alienImg, a.x, a.y, a.width, a.height);
+    for (let a of aliens) {
+        if (a.type !== 'normal') {
+            ctx.fillStyle = a.type === 'blue' ? 'rgba(0, 150, 255, 0.4)' :
+                            a.type === 'yellow' ? 'rgba(255, 255, 0, 0.4)' :
+                            a.type === 'red' ? 'rgba(255, 50, 50, 0.4)' :
+                            a.type === 'boss' ? 'rgba(255, 0, 255, 0.5)' :
+                            'rgba(255, 255, 255, 0.4)';
+            ctx.beginPath();
+            ctx.arc(a.x + a.width/2, a.y + a.height/2, a.width*0.8, 0, Math.PI*2);
+            ctx.fill();
+        }
+        
+        ctx.drawImage(alienImg, a.x, a.y, a.width, a.height);
+        
+        if (a.type === 'boss') {
+            ctx.fillStyle = 'red';
+            ctx.fillRect(a.x, a.y - 15, a.width, 8);
+            ctx.fillStyle = '#00FF00';
+            ctx.fillRect(a.x, a.y - 15, a.width * (a.hp / 100), 8); 
+        }
+    }
 
     for (let exp of explosions) {
         ctx.fillStyle = `rgba(255, 100, 0, ${1 - (exp.radius/exp.maxRadius)})`;

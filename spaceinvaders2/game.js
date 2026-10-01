@@ -14,6 +14,285 @@ const ship2Img = new Image(); ship2Img.src = 'Ship_2.png';
 const ship3Img = new Image(); ship3Img.src = 'Ship_3.png';
 const skins = [playerImg, ship4Img, ship5Img, ship2Img, ship3Img];
 
+const backgroundMusic = {
+    context: null,
+    masterGain: null,
+    intervalId: null,
+    started: false,
+    step: 0,
+    phraseIndex: 0,
+    musicMode: 'menu',
+    phrases: [
+        [261.63, 329.63, 392.00, 523.25, 392.00, 349.23, 293.66, 349.23, 392.00, 440.00, 523.25, 587.33, 523.25, 440.00, 392.00, 349.23],
+        [293.66, 392.00, 440.00, 523.25, 587.33, 523.25, 440.00, 392.00, 349.23, 392.00, 440.00, 493.88, 523.25, 493.88, 440.00, 392.00],
+        [329.63, 392.00, 493.88, 587.33, 523.25, 440.00, 392.00, 329.63, 349.23, 440.00, 523.25, 587.33, 659.25, 587.33, 523.25, 493.88],
+        [220.00, 293.66, 329.63, 392.00, 493.88, 440.00, 392.00, 329.63, 293.66, 349.23, 392.00, 440.00, 392.00, 349.23, 329.63, 293.66]
+    ],
+    bass: [130.81, 146.83, 164.81, 196.00, 146.83, 164.81, 174.61, 220.00]
+};
+
+function playMusicTone(frequency, duration, type = 'triangle', volume = 0.04, delay = 0) {
+    if (!backgroundMusic.context || !backgroundMusic.masterGain) return;
+
+    const { context, masterGain } = backgroundMusic;
+    const oscillator = context.createOscillator();
+    const gainNode = context.createGain();
+    const startAt = context.currentTime + delay;
+
+    oscillator.type = type;
+    oscillator.frequency.setValueAtTime(frequency, startAt);
+
+    gainNode.gain.setValueAtTime(0.0001, startAt);
+    gainNode.gain.exponentialRampToValueAtTime(volume, startAt + 0.02);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
+
+    oscillator.connect(gainNode);
+    gainNode.connect(masterGain);
+
+    oscillator.start(startAt);
+    oscillator.stop(startAt + duration + 0.05);
+}
+
+function playShootSound() {
+    if (!backgroundMusic.context || !backgroundMusic.masterGain) return;
+
+    const { context, masterGain } = backgroundMusic;
+    const oscillator = context.createOscillator();
+    const gainNode = context.createGain();
+    const startAt = context.currentTime;
+
+    oscillator.type = 'square';
+    oscillator.frequency.setValueAtTime(720, startAt);
+    oscillator.frequency.exponentialRampToValueAtTime(190, startAt + 0.08);
+
+    gainNode.gain.setValueAtTime(0.0001, startAt);
+    gainNode.gain.exponentialRampToValueAtTime(0.045, startAt + 0.01);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.09);
+
+    oscillator.connect(gainNode);
+    gainNode.connect(masterGain);
+
+    oscillator.start(startAt);
+    oscillator.stop(startAt + 0.1);
+}
+
+function playEnemyKillSound() {
+    if (!backgroundMusic.context || !backgroundMusic.masterGain) return;
+
+    const { context, masterGain } = backgroundMusic;
+    const oscillator = context.createOscillator();
+    const gainNode = context.createGain();
+    const startAt = context.currentTime;
+
+    oscillator.type = 'sawtooth';
+    oscillator.frequency.setValueAtTime(260, startAt);
+    oscillator.frequency.exponentialRampToValueAtTime(90, startAt + 0.12);
+
+    gainNode.gain.setValueAtTime(0.0001, startAt);
+    gainNode.gain.exponentialRampToValueAtTime(0.05, startAt + 0.01);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.13);
+
+    oscillator.connect(gainNode);
+    gainNode.connect(masterGain);
+
+    oscillator.start(startAt);
+    oscillator.stop(startAt + 0.14);
+}
+
+function playLoseSound() {
+    if (!backgroundMusic.context || !backgroundMusic.masterGain) return;
+
+    const { context, masterGain } = backgroundMusic;
+    const notes = [220, 164.81, 130.81];
+
+    notes.forEach((frequency, index) => {
+        const oscillator = context.createOscillator();
+        const gainNode = context.createGain();
+        const startAt = context.currentTime + index * 0.11;
+
+        oscillator.type = 'sawtooth';
+        oscillator.frequency.setValueAtTime(frequency, startAt);
+        oscillator.frequency.exponentialRampToValueAtTime(Math.max(80, frequency * 0.4), startAt + 0.22);
+
+        gainNode.gain.setValueAtTime(0.0001, startAt);
+        gainNode.gain.exponentialRampToValueAtTime(0.04, startAt + 0.02);
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.25);
+
+        oscillator.connect(gainNode);
+        gainNode.connect(masterGain);
+        oscillator.start(startAt);
+        oscillator.stop(startAt + 0.3);
+    });
+}
+
+function playPowerSound(powerType) {
+    if (!backgroundMusic.context || !backgroundMusic.masterGain) return;
+
+    const { context, masterGain } = backgroundMusic;
+    const tones = {
+        lightning: [360, 520],
+        spell: [220, 330],
+        gradient: [260, 440],
+        homing: [420, 660],
+        laser: [180, 300],
+        health: [540, 700],
+        speed: [660, 840],
+        default: [440, 560]
+    };
+    const frequencies = tones[powerType] || tones.default;
+
+    frequencies.forEach((frequency, index) => {
+        const osc = context.createOscillator();
+        const gain = context.createGain();
+        const startAt = context.currentTime + index * 0.05;
+
+        osc.type = index === 0 ? 'triangle' : 'sine';
+        osc.frequency.setValueAtTime(frequency, startAt);
+
+        gain.gain.setValueAtTime(0.0001, startAt);
+        gain.gain.exponentialRampToValueAtTime(0.025, startAt + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.18);
+
+        osc.connect(gain);
+        gain.connect(masterGain);
+        osc.start(startAt);
+        osc.stop(startAt + 0.19);
+    });
+}
+
+function playMenuSound() {
+    if (!backgroundMusic.context || !backgroundMusic.masterGain) return;
+
+    const { context, masterGain } = backgroundMusic;
+    const notes = [261.63, 329.63, 392.00, 440.00, 392.00, 329.63, 293.66, 261.63];
+
+    notes.forEach((frequency, index) => {
+        const osc = context.createOscillator();
+        const gain = context.createGain();
+        const startAt = context.currentTime + index * 0.14;
+
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(frequency, startAt);
+
+        gain.gain.setValueAtTime(0.0001, startAt);
+        gain.gain.exponentialRampToValueAtTime(0.018, startAt + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.24);
+
+        osc.connect(gain);
+        gain.connect(masterGain);
+        osc.start(startAt);
+        osc.stop(startAt + 0.26);
+    });
+}
+
+function playStartGameSound() {
+    if (!backgroundMusic.context || !backgroundMusic.masterGain) return;
+
+    const { context, masterGain } = backgroundMusic;
+    const notes = [220, 293.66, 392.00, 523.25];
+
+    notes.forEach((frequency, index) => {
+        const osc = context.createOscillator();
+        const gain = context.createGain();
+        const startAt = context.currentTime + index * 0.08;
+
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(frequency, startAt);
+
+        gain.gain.setValueAtTime(0.0001, startAt);
+        gain.gain.exponentialRampToValueAtTime(0.04, startAt + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.22);
+
+        osc.connect(gain);
+        gain.connect(masterGain);
+        osc.start(startAt);
+        osc.stop(startAt + 0.24);
+    });
+}
+
+function playBackgroundMusicStep() {
+    if (!backgroundMusic.context || !backgroundMusic.masterGain || backgroundMusic.musicMode !== 'gameplay') return;
+
+    const phrase = backgroundMusic.phrases[backgroundMusic.phraseIndex];
+    const lead = phrase[backgroundMusic.step % phrase.length];
+    const bass = backgroundMusic.bass[backgroundMusic.step % backgroundMusic.bass.length];
+
+    playMusicTone(lead, 0.18 + ((backgroundMusic.step % 4 === 0) ? 0.04 : 0), backgroundMusic.step % 3 === 0 ? 'triangle' : 'sine', 0.032, 0);
+    playMusicTone(bass, 0.26, 'sine', 0.018, 0.02);
+
+    if (backgroundMusic.step % 2 === 0) {
+        playMusicTone(lead * 1.5, 0.12, 'square', 0.012, 0.04);
+    }
+
+    if (backgroundMusic.step % 8 === 0) {
+        playMusicTone(lead / 2, 0.18, 'triangle', 0.016, 0.08);
+    }
+
+    backgroundMusic.step += 1;
+    if (backgroundMusic.step % 16 === 0) {
+        backgroundMusic.phraseIndex = (backgroundMusic.phraseIndex + 1) % backgroundMusic.phrases.length;
+    }
+}
+
+function playMenuThemeStep() {
+    if (!backgroundMusic.context || !backgroundMusic.masterGain || backgroundMusic.musicMode !== 'menu') return;
+
+    const menuNotes = [261.63, 329.63, 392.00, 440.00, 392.00, 329.63, 293.66, 261.63];
+    const note = menuNotes[backgroundMusic.step % menuNotes.length];
+
+    playMusicTone(note, 0.24, 'triangle', 0.09, 0);
+    if (backgroundMusic.step % 2 === 0) {
+        playMusicTone(note / 2, 0.3, 'sine', 0.055, 0.02);
+    }
+
+    backgroundMusic.step += 1;
+}
+
+function ensureAudioContext() {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return null;
+
+    if (!backgroundMusic.context) {
+        backgroundMusic.context = new AudioContextClass();
+        backgroundMusic.masterGain = backgroundMusic.context.createGain();
+        backgroundMusic.masterGain.gain.value = 0.7;
+        backgroundMusic.masterGain.connect(backgroundMusic.context.destination);
+    }
+
+    if (backgroundMusic.context.state === 'suspended') {
+        backgroundMusic.context.resume();
+    }
+
+    return backgroundMusic.context;
+}
+
+function startMenuMusic() {
+    ensureAudioContext();
+    if (!backgroundMusic.context || !backgroundMusic.masterGain) return;
+    if (backgroundMusic.musicMode === 'menu' && backgroundMusic.intervalId) return;
+
+    backgroundMusic.musicMode = 'menu';
+    backgroundMusic.started = true;
+    backgroundMusic.step = 0;
+    clearInterval(backgroundMusic.intervalId);
+    backgroundMusic.intervalId = setInterval(playMenuThemeStep, 260);
+    playMenuThemeStep();
+}
+
+function startBackgroundMusic() {
+    ensureAudioContext();
+    if (!backgroundMusic.context || !backgroundMusic.masterGain) return;
+    if (backgroundMusic.musicMode === 'gameplay' && backgroundMusic.intervalId) return;
+
+    backgroundMusic.musicMode = 'gameplay';
+    backgroundMusic.started = true;
+    backgroundMusic.step = 0;
+    backgroundMusic.phraseIndex = 0;
+    clearInterval(backgroundMusic.intervalId);
+    backgroundMusic.intervalId = setInterval(playBackgroundMusicStep, 200);
+    playBackgroundMusicStep();
+}
+
 // ==========================================
 // MÁQUINA DE ESTADOS DO JOGO GLOBAL
 // ==========================================
@@ -76,6 +355,7 @@ class PlayerBoard {
         this.lightnings = [];
         this.gradientWells = [];
         this.lifoStack = [];
+        this.effects = [];
 
         this.lastTurretShot = 0;
         this.lastSpellTime = 0;
@@ -137,10 +417,25 @@ class PlayerBoard {
             this.lives += 5;
         }
         if (upgrade.id === 'wall') this.playerWalls.push({ active: true });
+
+        playPowerSound(upgrade.id);
+        this.spawnEffect(upgrade.id, this.player.x + this.player.width / 2, this.player.y + this.player.height / 2, upgrade.id === 'health' ? '#7CFF8A' : upgrade.id === 'speed' ? '#FFDB70' : upgrade.id === 'laser' ? '#00FFFF' : upgrade.id === 'spell' ? '#B98DFF' : upgrade.id === 'gradient' ? '#A94DFF' : '#FFFFFF', 34, 420);
         
         this.nextUpgradeScore += 300;
         gameState = 'PLAYING';
         this.keys.shoot = false; 
+    }
+
+    spawnEffect(type, x, y, color = '#FFFFFF', size = 30, duration = 500) {
+        this.effects.push({
+            type,
+            x,
+            y,
+            color,
+            size,
+            duration,
+            createdAt: Date.now()
+        });
     }
 
     triggerLightning(startX, startY, jumpsLeft) {
@@ -160,6 +455,7 @@ class PlayerBoard {
                     timer: Date.now()
                 });
             }
+            this.spawnEffect('lightning', startX, startY, '#66D9FF', 28, 220);
             this.damageAlien(this.aliens.indexOf(closest), closest);
             this.triggerLightning(closest.x + closest.width/2, closest.y + closest.height/2, jumpsLeft - 1);
         }
@@ -203,7 +499,10 @@ class PlayerBoard {
                 x: alien.x + alien.width/2, y: alien.y + alien.height/2, 
                 radius: 10, maxRadius: 60, hitAliens: []
             });
+            this.spawnEffect('explosive', alien.x + alien.width/2, alien.y + alien.height/2, '#FF8A00', 40, 320);
         }
+
+        playEnemyKillSound();
         
         let pts = (alien.type === 'boss' ? 100 : 10) * (this.playerUpgrades.doublexp > 0 ? 2 : 1);
         this.score += pts;
@@ -257,7 +556,9 @@ class PlayerBoard {
             else if (mult === 1) offsets = [-15, 15];
             else if (mult === 2) offsets = [-20, 0, 20];
 
-            for(let px of shootPositions) {
+            playShootSound();
+
+            for(let px of shootPositions) { 
                 for (let offsetX of offsets) {
                     this.bullets.push({
                         x: px + this.player.width / 2 - 2.5 + offsetX,
@@ -299,13 +600,21 @@ class PlayerBoard {
         }
 
         if (this.playerUpgrades.spell > 0 && now - this.lastSpellTime > 4000) {
-            this.spellZones.push({x: Math.random()*(this.gameWidth-100)+50, y: Math.random()*(this.gameHeight/2)+50, radius: 80, spawnTime: now});
+            const spellX = Math.random()*(this.gameWidth-100)+50;
+            const spellY = Math.random()*(this.gameHeight/2)+50;
+            this.spellZones.push({x: spellX, y: spellY, radius: 80, spawnTime: now});
+            this.spawnEffect('spell', spellX, spellY, '#B98DFF', 54, 600);
+            playPowerSound('spell');
             this.lastSpellTime = now;
         }
         this.spellZones = this.spellZones.filter(s => now - s.spawnTime < 3000); 
 
         if (this.playerUpgrades.gradient > 0 && now - this.lastGradientTime > 8000) {
-            this.gradientWells.push({x: Math.random()*(this.gameWidth-200)+100, y: Math.random()*(this.gameHeight/2 - 100)+100, spawnTime: now});
+            const gradX = Math.random()*(this.gameWidth-200)+100;
+            const gradY = Math.random()*(this.gameHeight/2 - 100)+100;
+            this.gradientWells.push({x: gradX, y: gradY, spawnTime: now});
+            this.spawnEffect('gradient', gradX, gradY, '#A94DFF', 58, 800);
+            playPowerSound('gradient');
             this.lastGradientTime = now;
         }
         this.gradientWells = this.gradientWells.filter(g => now - g.spawnTime < 4000);
@@ -348,6 +657,8 @@ class PlayerBoard {
             }
         }
 
+        this.effects = this.effects.filter(effect => Date.now() - effect.createdAt < effect.duration);
+
         for (let i = this.alienBullets.length - 1; i >= 0; i--) {
             let ab = this.alienBullets[i];
             ab.x += ab.vx || 0;
@@ -360,6 +671,7 @@ class PlayerBoard {
                 this.alienBullets.splice(i, 1);
                 
                 if (this.lives <= 0) {
+                    playLoseSound();
                     if (gameMode === 'SOLO') {
                         gameState = 'GAMEOVER';
                         localStorage.setItem('spaceInvadersHighScore', highScore);
@@ -440,6 +752,7 @@ class PlayerBoard {
                 this.killAlien(i, alien);
                 
                 if (this.lives <= 0) {
+                    playLoseSound();
                     if (gameMode === 'SOLO') {
                         gameState = 'GAMEOVER';
                         localStorage.setItem('spaceInvadersHighScore', highScore);
@@ -479,6 +792,7 @@ class PlayerBoard {
                 this.aliens.splice(i, 1);
                 this.lives--;             
                 if (this.lives <= 0) {
+                    playLoseSound();
                     if (gameMode === 'SOLO') {
                         gameState = 'GAMEOVER';
                         localStorage.setItem('spaceInvadersHighScore', highScore);
@@ -699,6 +1013,71 @@ class PlayerBoard {
             ctx.fillStyle = `rgba(255, 100, 0, ${1 - (exp.radius/exp.maxRadius)})`;
             ctx.beginPath(); ctx.arc(exp.x, exp.y, exp.radius, 0, Math.PI * 2); ctx.fill();
         }
+
+        for (let effect of this.effects) {
+            const elapsed = Date.now() - effect.createdAt;
+            const progress = Math.min(1, elapsed / effect.duration);
+            const alpha = 1 - progress;
+            ctx.save();
+
+            if (effect.type === 'lightning') {
+                ctx.strokeStyle = `rgba(102, 217, 255, ${alpha})`;
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(effect.x, effect.y);
+                for (let i = 1; i <= 5; i++) {
+                    const px = effect.x + (i - 0.5) * 10;
+                    const py = effect.y + (i % 2 === 0 ? -18 : 18) * (1 + progress * 0.5);
+                    ctx.lineTo(px, py);
+                }
+                ctx.stroke();
+            } else if (effect.type === 'spell') {
+                ctx.strokeStyle = `rgba(185, 141, 255, ${alpha})`;
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.arc(effect.x, effect.y, effect.size * (0.55 + progress), 0, Math.PI * 2);
+                ctx.stroke();
+            } else if (effect.type === 'gradient') {
+                const grad = ctx.createRadialGradient(effect.x, effect.y, 0, effect.x, effect.y, effect.size * (0.7 + progress));
+                grad.addColorStop(0, 'rgba(255,255,255,0.6)');
+                grad.addColorStop(0.5, `rgba(169, 77, 255, ${alpha * 0.7})`);
+                grad.addColorStop(1, 'rgba(169, 77, 255, 0)');
+                ctx.fillStyle = grad;
+                ctx.beginPath();
+                ctx.arc(effect.x, effect.y, effect.size * (0.9 + progress), 0, Math.PI * 2);
+                ctx.fill();
+            } else if (effect.type === 'explosive') {
+                ctx.strokeStyle = `rgba(255, 138, 0, ${alpha})`;
+                ctx.lineWidth = 4;
+                ctx.beginPath();
+                ctx.arc(effect.x, effect.y, effect.size * (0.25 + progress), 0, Math.PI * 2);
+                ctx.stroke();
+            } else if (effect.type === 'health') {
+                ctx.strokeStyle = `rgba(124, 255, 138, ${alpha})`;
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(effect.x - effect.size, effect.y);
+                ctx.lineTo(effect.x + effect.size, effect.y);
+                ctx.moveTo(effect.x, effect.y - effect.size);
+                ctx.lineTo(effect.x, effect.y + effect.size);
+                ctx.stroke();
+            } else if (effect.type === 'speed') {
+                ctx.strokeStyle = `rgba(255, 219, 112, ${alpha})`;
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(effect.x - effect.size, effect.y);
+                ctx.lineTo(effect.x, effect.y - effect.size * 0.6);
+                ctx.lineTo(effect.x + effect.size, effect.y);
+                ctx.stroke();
+            } else {
+                ctx.fillStyle = effect.color.replace(')', `, ${alpha})`).replace('rgb', 'rgba');
+                ctx.beginPath();
+                ctx.arc(effect.x, effect.y, effect.size * (0.4 + progress), 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            ctx.restore();
+        }
         
         ctx.strokeStyle = '#00FFFF'; ctx.lineWidth = 2;
         for (let l of this.lightnings) {
@@ -731,6 +1110,8 @@ class PlayerBoard {
 // ==========================================
 
 function resetGame(mode) {
+    startBackgroundMusic();
+    playStartGameSound();
     gameMode = mode;
     if (mode === 'SOLO') {
         canvas.width = 800;
@@ -760,6 +1141,7 @@ canvas.addEventListener('mousedown', (e) => {
     const mouseY = (e.clientY - rect.top) * scaleY;
 
     if (gameState === 'START') {
+        playMenuSound();
         // Botão Solo: x entre 180 e 380, y entre 320 e 380
         // Botão Multi: x entre 420 e 620, y entre 320 e 380
         if (mouseY >= 320 && mouseY <= 380) {
@@ -800,6 +1182,7 @@ document.addEventListener('keydown', (e) => {
     if ((gameState.includes('WIN') || gameState === 'GAMEOVER') && (e.code === 'Enter' || e.code === 'Space')) {
         gameState = 'START';
         canvas.width = 800;
+        startMenuMusic();
         return;
     }
     
@@ -876,6 +1259,7 @@ function gameLoop() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     if (gameState === 'START') {
+        startMenuMusic();
         canvas.width = 800; // Força tela de menu
         ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, canvas.width, canvas.height);
         

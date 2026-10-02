@@ -59,21 +59,57 @@ function playShootSound() {
     const { context, masterGain } = backgroundMusic;
     const oscillator = context.createOscillator();
     const gainNode = context.createGain();
+    const harmonic = context.createOscillator();
+    const harmonicGain = context.createGain();
     const startAt = context.currentTime;
 
-    oscillator.type = 'square';
-    oscillator.frequency.setValueAtTime(720, startAt);
-    oscillator.frequency.exponentialRampToValueAtTime(190, startAt + 0.08);
+    oscillator.type = 'triangle';
+    oscillator.frequency.setValueAtTime(480, startAt);
+    oscillator.frequency.exponentialRampToValueAtTime(240, startAt + 0.11);
+    harmonic.type = 'sine';
+    harmonic.frequency.setValueAtTime(960, startAt);
+    harmonic.frequency.exponentialRampToValueAtTime(480, startAt + 0.09);
 
     gainNode.gain.setValueAtTime(0.0001, startAt);
-    gainNode.gain.exponentialRampToValueAtTime(0.045, startAt + 0.01);
-    gainNode.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.09);
+    gainNode.gain.exponentialRampToValueAtTime(0.04, startAt + 0.008);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.12);
+    harmonicGain.gain.setValueAtTime(0.0001, startAt);
+    harmonicGain.gain.exponentialRampToValueAtTime(0.012, startAt + 0.008);
+    harmonicGain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.1);
+
+    oscillator.connect(gainNode);
+    gainNode.connect(masterGain);
+    harmonic.connect(harmonicGain);
+    harmonicGain.connect(masterGain);
+
+    oscillator.start(startAt);
+    harmonic.start(startAt);
+    oscillator.stop(startAt + 0.13);
+    harmonic.stop(startAt + 0.11);
+}
+
+function playLaserSound() {
+    if (!backgroundMusic.context || !backgroundMusic.masterGain) return;
+
+    const { context, masterGain } = backgroundMusic;
+    const oscillator = context.createOscillator();
+    const gainNode = context.createGain();
+    const startAt = context.currentTime;
+
+    oscillator.type = 'sawtooth';
+    oscillator.frequency.setValueAtTime(180, startAt);
+    oscillator.frequency.exponentialRampToValueAtTime(620, startAt + 0.08);
+    oscillator.frequency.exponentialRampToValueAtTime(280, startAt + 0.2);
+
+    gainNode.gain.setValueAtTime(0.0001, startAt);
+    gainNode.gain.exponentialRampToValueAtTime(0.035, startAt + 0.015);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.21);
 
     oscillator.connect(gainNode);
     gainNode.connect(masterGain);
 
     oscillator.start(startAt);
-    oscillator.stop(startAt + 0.1);
+    oscillator.stop(startAt + 0.22);
 }
 
 function playEnemyKillSound() {
@@ -255,7 +291,7 @@ function ensureAudioContext() {
     if (!backgroundMusic.context) {
         backgroundMusic.context = new AudioContextClass();
         backgroundMusic.masterGain = backgroundMusic.context.createGain();
-        backgroundMusic.masterGain.gain.value = 0.7;
+        backgroundMusic.masterGain.gain.value = 3.5;
         backgroundMusic.masterGain.connect(backgroundMusic.context.destination);
     }
 
@@ -358,6 +394,7 @@ class PlayerBoard {
         this.effects = [];
 
         this.lastTurretShot = 0;
+        this.lastLaserSound = 0;
         this.lastSpellTime = 0;
         this.lastLifoPop = 0;
         this.lastGradientTime = 0;
@@ -551,6 +588,11 @@ class PlayerBoard {
             let currentBulletSpeed = isHoming ? this.bulletSpeed * 0.5 : this.bulletSpeed;
             
             let mult = Math.min(this.playerUpgrades.multishot, 2);
+
+        if (isShootingLaser && now - this.lastLaserSound > 180) {
+            playLaserSound();
+            this.lastLaserSound = now;
+        }
             let offsets = [];
             if (mult === 0) offsets = [0];
             else if (mult === 1) offsets = [-15, 15];
